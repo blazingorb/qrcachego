@@ -27,9 +27,13 @@ func GenerateQRImage(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", "image/jpeg")
+	p := path.Clean(req.URL.Path)
+	folder := path.Base(path.Dir(p))
+	fmt.Println("Folder:", folder)
+	splits := strings.Split(folder, "x")
 
-	width, _ := strconv.Atoi(req.FormValue("width"))
-	height, _ := strconv.Atoi(req.FormValue("height"))
+	width, _ := strconv.Atoi(splits[0])
+	height, _ := strconv.Atoi(splits[1])
 
 	if width == 0 {
 		width = 200
@@ -39,9 +43,7 @@ func GenerateQRImage(w http.ResponseWriter, req *http.Request) {
 		height = 200
 	}
 
-	//v := req.FormValue("value")
-
-	fileName := path.Base(path.Clean(req.URL.Path))
+	fileName := path.Base(p)
 	v := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 	fmt.Println("Value:", v)
 
@@ -50,15 +52,11 @@ func GenerateQRImage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// folderPath := fmt.Sprintf("./%d_%d", width, height)
-	// absFolderPath, _ := filepath.Abs(folderPath)
+	absFolderPath, _ := filepath.Abs(folder)
 
-	// path := fmt.Sprintf("./%d_%d/%s.jpg", width, height, v)
-	// absPath, _ := filepath.Abs(path)
-	// fmt.Println("Path:", absPath)
-
-	absPath, _ := filepath.Abs(fileName)
-	fmt.Println("Path:", absPath)
+	fPath := path.Join(folder, fileName)
+	absPath, _ := filepath.Abs(fPath)
+	fmt.Println("File Path:", absPath)
 
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		fmt.Println("Try to generate new qrcode image file!")
@@ -83,12 +81,12 @@ func GenerateQRImage(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		// err = os.MkdirAll(absFolderPath, 0755)
-		// if err != nil {
-		// 	fmt.Println("Error occurred when trying to create folder:", err)
-		// 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		// 	return
-		// }
+		err = os.MkdirAll(absFolderPath, 0755)
+		if err != nil {
+			fmt.Println("Error occurred when trying to create folder:", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 
 		file, err := os.Create(absPath)
 		if err != nil {
@@ -103,14 +101,14 @@ func GenerateQRImage(w http.ResponseWriter, req *http.Request) {
 		jpeg.Encode(mw, qrCode, nil)
 
 	} else {
+		fmt.Println("Try to read existed qrcode image file!")
+
 		existingImg, err := ioutil.ReadFile(absPath)
 		if err != nil {
 			fmt.Println("Error occurred when trying to read file:", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-
-		fmt.Println("existingImg:", string(existingImg))
 
 		w.Write(existingImg)
 	}
