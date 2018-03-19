@@ -17,10 +17,9 @@ import (
 )
 
 const (
-	TestValue  = "https://rinkeby.etherscan.io/address/0xf0d65479732eedc406c00ffb29bc9dd426780ee4"
+	TestValue  = "TestValue"
 	TestWidth  = "200"
 	TestHeight = "200"
-	TestPath   = "test.jpg"
 )
 
 var (
