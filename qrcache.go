@@ -45,10 +45,12 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("Req.URL:", req.URL)
 
 	if _, err := os.Stat(string(qrc.root)); os.IsNotExist(err) {
+		fmt.Println("Root folder is not existed!")
 		panic(err)
 	}
 
 	if req.Method != "GET" {
+		fmt.Println("Unsupported method type!")
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
@@ -56,6 +58,13 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Add("Content-Type", "image/jpeg")
 	p := path.Clean(req.URL.Path)
 	p = strings.TrimPrefix(p, ROUTE_PREFIX)
+
+	if strings.Count(p, "/") > 1 {
+		fmt.Println("Unsupported folder structure!")
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
 	folder := path.Base(path.Dir(p))
 	fmt.Println("Folder:", folder)
 
