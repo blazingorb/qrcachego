@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"image/jpeg"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -16,27 +15,60 @@ import (
 	"github.com/boombuler/barcode/qr"
 )
 
-const (
-	ROUTE_PREFIX = "/qrcode/"
-)
-
+//Supported Size
 const (
 	SIZE100 = "100x100"
 	SIZE200 = "200x200"
 	SIZE300 = "300x300"
 	SIZE400 = "400x400"
 	SIZE500 = "500x500"
+	DEFAULT = "."
 )
 
 type qrCache struct {
-	root      http.Dir
-	maxLength int
+	root         http.Dir
+	maxLength    int
+	maxQueueSize int
+	folderMap    map[string]int
 }
 
-func NewQRCache(root http.Dir, maxLength int) *qrCache {
+func NewQRCache(root http.Dir, maxLength, maxQueueSize int) *qrCache {
+	if _, err := os.Stat(string(root)); os.IsNotExist(err) {
+		fmt.Println("Root folder is not existed!")
+		err = os.Mkdir(string(root), 0755)
+		if err != nil {
+			fmt.Println("Error occurred when trying to create root folder:", err)
+			panic(err)
+		}
+	}
+
+	folderMap := make(map[string]int)
+	folderMap[SIZE100] = 100
+	folderMap[SIZE200] = 200
+	folderMap[SIZE300] = 300
+	folderMap[SIZE400] = 400
+	folderMap[SIZE500] = 500
+	folderMap[DEFAULT] = 200
+
+	for d := range folderMap {
+		sd := path.Join(string(root), d)
+		if _, err := os.Stat(sd); os.IsNotExist(err) {
+			fmt.Printf("Folder %s is not existed!\n", d)
+			err = os.Mkdir(string(sd), 0755)
+			if err != nil {
+				fmt.Println("Error occurred when trying to create default folder:", err)
+				panic(err)
+			}
+		}
+	}
+
+	//Go routine for GC (time interval or use Queue)
+
 	return &qrCache{
 		root,
 		maxLength,
+		maxQueueSize,
+		folderMap,
 	}
 }
 
@@ -44,74 +76,57 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("listJSON Endpoint: ", req.RemoteAddr)
 	fmt.Println("Req.URL:", req.URL)
 
-	if _, err := os.Stat(string(qrc.root)); os.IsNotExist(err) {
-		fmt.Println("Root folder is not existed!")
-		panic(err)
-	}
-
 	if req.Method != "GET" {
 		fmt.Println("Unsupported method type!")
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		http.NotFound(w, req)
 		return
 	}
 
 	w.Header().Add("Content-Type", "image/jpeg")
 	p := path.Clean(req.URL.Path)
-	p = strings.TrimPrefix(p, ROUTE_PREFIX)
-
-	if strings.Count(p, "/") > 1 {
-		fmt.Println("Unsupported folder structure!")
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
 
 	folder := path.Base(path.Dir(p))
 	fmt.Println("Folder:", folder)
 
-	var width, height int
-
-	switch folder {
-	case SIZE100:
-		width = 100
-		height = 100
-	case SIZE200:
-		width = 200
-		height = 200
-	case SIZE300:
-		width = 300
-		height = 300
-	case SIZE400:
-		width = 400
-		height = 400
-	case SIZE500:
-		width = 500
-		height = 500
-	case ".":
-		width = 200
-		height = 200
-	default:
+	if _, ok := qrc.folderMap[folder]; !ok {
 		fmt.Println("Requested image size is not supported!")
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		http.NotFound(w, req)
 		return
 	}
+
+	width := qrc.folderMap[folder]
+	height := qrc.folderMap[folder]
 
 	fileName := path.Base(p)
 	v := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 	fmt.Println("Value:", v)
 
-	if v == "" || len(v) > qrc.maxLength {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+	if v == "" {
+		fmt.Println("Empty value.")
+		http.NotFound(w, req)
 		return
 	}
 
-	dstPath := path.Join(folder, fileName)
-	fmt.Println("File Path:", dstPath)
+	if len(v) > qrc.maxLength {
+		fmt.Println("Exceeded maximum value length.")
+		http.NotFound(w, req)
+		return
+	}
 
-	fInfo, err := qrc.root.Open(dstPath)
+	if filepath.Ext(fileName) != ".jpg" {
+		fmt.Println("Unsupported file format.")
+		http.NotFound(w, req)
+		return
+	}
+
+	// dstPath := path.Join(folder, fileName)
+	fmt.Println("File Path:", p)
+
+	fInfo, err := qrc.root.Open(p)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			fmt.Println("Error occurred when trying to open file:", err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			http.NotFound(w, req)
 			return
 		}
 
@@ -119,60 +134,52 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		decoded, err := base64.URLEncoding.DecodeString(v)
 		if err != nil {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			http.NotFound(w, req)
 			return
 		}
 
 		qrCode, err := qr.Encode(string(decoded), qr.M, qr.Auto)
 		if err != nil {
 			fmt.Println("Error occurred when trying to encode qrcode:", err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			http.NotFound(w, req)
 			return
 		}
 
-		qrCode, err = barcode.Scale(qrCode, width, height)
-		if err != nil {
-			fmt.Println("Error occurred when trying to scale qrcode:", err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-			return
+		bounds := qrCode.Bounds()
+		orgLength := bounds.Max.X - bounds.Min.X
+		fmt.Println("orgLength:", orgLength)
+
+		if orgLength != width || orgLength != height {
+			qrCode, err = barcode.Scale(qrCode, width, height)
+			if err != nil {
+				fmt.Println("Error occurred when trying to scale qrcode:", err)
+				http.NotFound(w, req)
+				return
+			}
 		}
 
-		dstPath = path.Join(string(qrc.root), dstPath)
+		dstPath := path.Join(string(qrc.root), p)
 		absPath, _ := filepath.Abs(dstPath)
 
-		folder = path.Join(string(qrc.root), folder)
-		absFolderPath, _ := filepath.Abs(folder)
 		fmt.Println("absPath: ", absPath)
-		fmt.Println("absFolderPath: ", absFolderPath)
-
-		err = os.MkdirAll(absFolderPath, 0755)
-		if err != nil {
-			fmt.Println("Error occurred when trying to create folder:", err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-			return
-		}
 
 		file, err := os.Create(absPath)
 		if err != nil {
 			fmt.Println("Error occurred when trying to create file:", err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			http.NotFound(w, req)
 			return
 		}
 		defer file.Close()
 
-		mw := io.MultiWriter(w, file)
-		jpeg.Encode(mw, qrCode, nil)
+		jpeg.Encode(io.MultiWriter(w, file), qrCode, nil)
 	} else {
 		defer fInfo.Close()
 		fmt.Println("Try to read existed qrcode image file!")
 
-		existingImg, err := ioutil.ReadAll(fInfo)
+		_, err = io.Copy(w, fInfo)
 		if err != nil {
-			fmt.Println("Error occurred when trying to read file:", err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			fmt.Println("Error occurred when trying to return content:", err)
 			return
 		}
-
-		w.Write(existingImg)
 	}
 }
