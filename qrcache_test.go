@@ -17,9 +17,14 @@ import (
 )
 
 const (
-	TestValue  = "TestValue"
+	TestValue  = "https://rinkeby.etherscan.io/address/0xf0d65479732eedc406c00ffb29bc9dd426780ee4"
 	TestWidth  = "200"
 	TestHeight = "200"
+	TestURL1   = "http://localhost:8888/qrcode/200x200/aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==.jpg"
+
+	TestRoute     = "/qrcode/"
+	TestRoot      = "."
+	TestMaxLength = 300
 )
 
 var (
@@ -39,24 +44,20 @@ func testAnswer() []byte {
 	return buffer.Bytes()
 }
 
-func TestGenerateQRImage(t *testing.T) {
+func TestCacheSuccess(t *testing.T) {
 
-	req, err := http.NewRequest("GET", "/", nil)
+	req, err := http.NewRequest("GET", TestURL1, nil)
 	if err != nil {
 		t.Error("Request Creation Failed: ", err)
 	}
-	req.Header.Set("Content-Type", "image/jpeg")
-	q := req.URL.Query()
-	q.Add("value", TestEncoded)
-	q.Add("width", TestWidth)
-	q.Add("height", TestHeight)
-	req.URL.RawQuery = q.Encode()
 
 	fmt.Println(req.URL.String())
 
 	reqr := httptest.NewRecorder()
 
-	http.HandlerFunc(qcg.GenerateQRImage).ServeHTTP(reqr, req)
+	cache := qcg.NewQRCache(http.Dir(TestRoot), TestMaxLength)
+
+	cache.ServeHTTP(reqr, req)
 	if status := reqr.Code; status != http.StatusOK {
 		t.Errorf("Status code differs. Expected %d \n Got %d", http.StatusOK, status)
 	}
