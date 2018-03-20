@@ -8,10 +8,15 @@ import (
 	"github.com/rs/cors"
 )
 
+const (
+	ROOT_PATH  = "test"
+	MAX_LENGTH = 300
+)
+
 func main() {
 	access := cors.AllowAll().Handler
 	mux := http.NewServeMux()
-	mux.HandleFunc("/qrcode/", qcg.GenerateQRImage)
+	mux.Handle("/qrcode/", qcg.NewQRCache(http.Dir(ROOT_PATH), MAX_LENGTH))
 
 	err := http.ListenAndServe(":8888", access(mux))
 	if err != nil {
