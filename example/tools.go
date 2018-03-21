@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ROOT_PATH     = "test"
+	ROOT_PATH     = "example"
 	MAX_LENGTH    = 300
 	EXPIRY_IN_MIN = 1
 )
