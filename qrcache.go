@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"
@@ -26,13 +27,15 @@ const (
 )
 
 type qrCache struct {
-	root         http.Dir
-	maxLength    int
-	maxQueueSize int
-	folderMap    map[string]int
+	gcFlag    bool
+	root      http.Dir
+	maxLength int
+	expiry    int
+	folderMap map[string]int
+	gcCh      chan string
 }
 
-func NewQRCache(root http.Dir, maxLength, maxQueueSize int) *qrCache {
+func NewQRCache(root http.Dir, maxLength, expiry int, gcFlag bool) *qrCache {
 	if _, err := os.Stat(string(root)); os.IsNotExist(err) {
 		fmt.Println("Root folder is not existed!")
 		err = os.Mkdir(string(root), 0755)
@@ -62,13 +65,36 @@ func NewQRCache(root http.Dir, maxLength, maxQueueSize int) *qrCache {
 		}
 	}
 
-	//Go routine for GC (time interval or use Queue)
+	var gcCh chan string
+
+	if gcFlag {
+		gcCh = make(chan string)
+		go func() {
+			gcMap := make(map[string]time.Time)
+			for {
+				f := <-gcCh
+
+				gcMap[f] = time.Now()
+				for k, v := range gcMap {
+					tSpan := int(time.Now().Sub(v) / time.Minute)
+					fmt.Printf("Time span of %s: %d \n", k, tSpan)
+					if tSpan > expiry {
+						os.Remove(k)
+						fmt.Println("Remove file:", k)
+						delete(gcMap, k)
+					}
+				}
+			}
+		}()
+	}
 
 	return &qrCache{
+		gcFlag,
 		root,
 		maxLength,
-		maxQueueSize,
+		expiry,
 		folderMap,
+		gcCh,
 	}
 }
 
@@ -119,8 +145,12 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// dstPath := path.Join(folder, fileName)
 	fmt.Println("File Path:", p)
+
+	dstPath := path.Join(string(qrc.root), p)
+	absPath, _ := filepath.Abs(dstPath)
+
+	fmt.Println("absPath: ", absPath)
 
 	fInfo, err := qrc.root.Open(p)
 	if err != nil {
@@ -158,11 +188,6 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		dstPath := path.Join(string(qrc.root), p)
-		absPath, _ := filepath.Abs(dstPath)
-
-		fmt.Println("absPath: ", absPath)
-
 		file, err := os.Create(absPath)
 		if err != nil {
 			fmt.Println("Error occurred when trying to create file:", err)
@@ -181,5 +206,9 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			fmt.Println("Error occurred when trying to return content:", err)
 			return
 		}
+	}
+
+	if qrc.gcFlag {
+		qrc.gcCh <- absPath
 	}
 }
