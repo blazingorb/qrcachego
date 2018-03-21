@@ -16,13 +16,13 @@ import (
 )
 
 const (
-	TestValue  = "https://rinkeby.etherscan.io/address/0xf0d65479732eedc406c00ffb29bc9dd426780ee4"
+	TestValue  = "http://www.google.com"
 	TestWidth  = "200"
 	TestHeight = "200"
 
 	TestRoot      = "test"
 	TestMaxLength = 300
-	TestExpiry    = 1
+	TestExpiry    = -1
 )
 
 var (
@@ -47,7 +47,7 @@ var cacheTests = []cacheTest{
 	{
 		def:    "Unsupported image size",
 		method: "GET",
-		url:    "http://localhost/123x123/aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==.jpg",
+		url:    "http://localhost/123x123/aHR0cDovL3d3dy5nb29nbGUuY29t.jpg",
 		status: http.StatusNotFound,
 	},
 	{
@@ -59,19 +59,38 @@ var cacheTests = []cacheTest{
 	{
 		def:    "Exceeded maximum value length.",
 		method: "GET",
-		url:    "http://localhost/200x200/aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==.jpg",
+		url:    "http://localhost/200x200/aHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29taHR0cDovL3d3dy5nb29nbGUuY29t.jpg",
 		status: http.StatusNotFound,
 	},
 	{
 		def:    "Unsupported file format.",
 		method: "GET",
-		url:    "http://localhost/200x200/aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==.png",
+		url:    "http://localhost/200x200/aHR0cDovL3d3dy5nb29nbGUuY29t.txt",
 		status: http.StatusNotFound,
+	},
+	{
+		def:    "Empty file format.",
+		method: "GET",
+		url:    "http://localhost/200x200/aHR0cDovL3d3dy5nb29nbGUuY29t",
+		status: http.StatusNotFound,
+	},
+	{
+		def:    "Invalid folder structure.",
+		method: "GET",
+		url:    "http://localhost/200x200/200x200/aHR0cDovL3d3dy5nb29nbGUuY29t.jpg",
+		status: http.StatusNotFound,
+	},
+	{
+		def:    "Success with default size",
+		method: "GET",
+		url:    "http://localhost/aHR0cDovL3d3dy5nb29nbGUuY29t.jpg",
+		status: http.StatusOK,
+		want:   TestAnswer,
 	},
 	{
 		def:    "Success",
 		method: "GET",
-		url:    "http://localhost/200x200/aHR0cHM6Ly9yaW5rZWJ5LmV0aGVyc2Nhbi5pby9hZGRyZXNzLzB4ZjBkNjU0Nzk3MzJlZWRjNDA2YzAwZmZiMjliYzlkZDQyNjc4MGVlNA==.jpg",
+		url:    "http://localhost/200x200/aHR0cDovL3d3dy5nb29nbGUuY29t.jpg",
 		status: http.StatusOK,
 		want:   TestAnswer,
 	},
@@ -100,9 +119,8 @@ func TestCache(t *testing.T) {
 
 			reqr := httptest.NewRecorder()
 
-			cache := qcg.NewQRCache(http.Dir(TestRoot), TestMaxLength, TestExpiry, false)
-
-			cache.ServeHTTP(reqr, req)
+			hander := http.StripPrefix("/", qcg.NewQRCache(http.Dir(TestRoot), TestMaxLength, TestExpiry))
+			hander.ServeHTTP(reqr, req)
 			if status := reqr.Code; status != test.status {
 				t.Errorf("Status code differs. Expected %d \n Got %d", test.status, status)
 				return

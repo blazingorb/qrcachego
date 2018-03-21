@@ -27,15 +27,13 @@ const (
 )
 
 type qrCache struct {
-	gcFlag    bool
 	root      http.Dir
 	maxLength int
-	expiry    int
 	folderMap map[string]int
 	gcCh      chan string
 }
 
-func NewQRCache(root http.Dir, maxLength, expiry int, gcFlag bool) *qrCache {
+func NewQRCache(root http.Dir, maxLength int, expiry time.Duration) *qrCache {
 	if _, err := os.Stat(string(root)); os.IsNotExist(err) {
 		fmt.Println("Root folder is not existed!")
 		err = os.Mkdir(string(root), 0755)
@@ -67,7 +65,7 @@ func NewQRCache(root http.Dir, maxLength, expiry int, gcFlag bool) *qrCache {
 
 	var gcCh chan string
 
-	if gcFlag {
+	if expiry > 0 {
 		gcCh = make(chan string)
 		go func() {
 			gcMap := make(map[string]time.Time)
@@ -76,9 +74,7 @@ func NewQRCache(root http.Dir, maxLength, expiry int, gcFlag bool) *qrCache {
 
 				gcMap[f] = time.Now()
 				for k, v := range gcMap {
-					tSpan := int(time.Now().Sub(v) / time.Minute)
-					fmt.Printf("Time span of %s: %d \n", k, tSpan)
-					if tSpan > expiry {
+					if time.Now().Sub(v) > expiry {
 						os.Remove(k)
 						fmt.Println("Remove file:", k)
 						delete(gcMap, k)
@@ -89,10 +85,8 @@ func NewQRCache(root http.Dir, maxLength, expiry int, gcFlag bool) *qrCache {
 	}
 
 	return &qrCache{
-		gcFlag,
 		root,
 		maxLength,
-		expiry,
 		folderMap,
 		gcCh,
 	}
@@ -121,7 +115,7 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	width := qrc.folderMap[folder]
-	height := qrc.folderMap[folder]
+	height := width
 
 	fileName := path.Base(p)
 	v := strings.TrimSuffix(fileName, filepath.Ext(fileName))
@@ -175,17 +169,15 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		bounds := qrCode.Bounds()
-		orgLength := bounds.Max.X - bounds.Min.X
-		fmt.Println("orgLength:", orgLength)
+		// bounds := qrCode.Bounds()
+		// orgLength := bounds.Max.X - bounds.Min.X
+		// fmt.Println("orgLength:", orgLength)
 
-		if orgLength != width || orgLength != height {
-			qrCode, err = barcode.Scale(qrCode, width, height)
-			if err != nil {
-				fmt.Println("Error occurred when trying to scale qrcode:", err)
-				http.NotFound(w, req)
-				return
-			}
+		qrCode, err = barcode.Scale(qrCode, width, height)
+		if err != nil {
+			fmt.Println("Error occurred when trying to scale qrcode:", err)
+			http.NotFound(w, req)
+			return
 		}
 
 		file, err := os.Create(absPath)
@@ -208,7 +200,7 @@ func (qrc *qrCache) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if qrc.gcFlag {
+	if qrc.gcCh != nil {
 		qrc.gcCh <- absPath
 	}
 }

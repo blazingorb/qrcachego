@@ -15,3 +15,6 @@ QRCache for GOlang
 4. File Type Check (DONE)
 5. Avoid Scale if qrCode is in default size (DONE)
 6. GC
+
+## Notes
+    No GC when expiry is negative
