@@ -11,8 +11,12 @@ QRCache for GOlang
 ## Usage
 
 Sample Usage for using QRCache:
-- /qrcode/: Cache qrcode image with GC
-- /qr/
+- "/qrcode/": 
+
+>   Cache qrcode image with GC (triggerd whenever ServeHttp(w, req) called, and cached image which has not been accessed longer than expiry will be removed)
+- "/qrcode-perm/": 
+
+>   Cache qrcode image without GC
 
 ```go
 package main
